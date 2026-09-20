@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Exception: backend needs its dist committed for Render deployment
+!part3/phonebook-backend/dist
+
 # Editor & OS files
 .vscode/*
 !.vscode/extensions.json
