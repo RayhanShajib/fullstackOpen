@@ -75,6 +75,10 @@ const App = () => {
         setNewNumber('')
         showNotification(`Added ${returnedPerson.name}`)
       })
+      .catch(error => {
+        const message = error.response?.data?.error || 'Failed to add person'
+        showNotification(message, 'error')
+      })
   }
 
   const deletePerson = (id) => {

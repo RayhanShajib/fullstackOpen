@@ -99,6 +99,8 @@ app.post('/api/persons', (request, response, next) => {
 })
 
 // 3.17*: PUT — update an existing person's number
+// 3.19/3.20: validators are disabled on update by default, so we use
+// findById + .save() (which runs validators) instead of findByIdAndUpdate
 app.put('/api/persons/:id', (request, response, next) => {
   const { number } = request.body
 
@@ -121,13 +123,18 @@ const unknownEndpoint = (request, response) => {
 }
 app.use(unknownEndpoint)
 
-// ── 3.16: Centralized error handler middleware ─────────────────────────────────
+// ── 3.16: Centralized error handler middleware ─────────────────────────────────────
 // Must be the last middleware loaded
 const errorHandler = (error, request, response, next) => {
   console.error(error.message)
 
   if (error.name === 'CastError') {
     return response.status(400).send({ error: 'malformatted id' })
+  }
+
+  // 3.19*: Return Mongoose validation error messages to the client
+  if (error.name === 'ValidationError') {
+    return response.status(400).json({ error: error.message })
   }
 
   next(error)
