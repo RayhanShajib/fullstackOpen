@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Blog from './components/Blog'
 import LoginForm from './components/LoginForm'
 import BlogForm from './components/BlogForm'
+import Togglable from './components/Togglable'
 import Notification from './components/Notification'
 import blogService from './services/blogs'
 import loginService from './services/login'
@@ -11,12 +12,9 @@ const App = () => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [user, setUser] = useState(null)
-
-  const [title, setTitle] = useState('')
-  const [author, setAuthor] = useState('')
-  const [url, setUrl] = useState('')
-
   const [notification, setNotification] = useState({ message: null, type: 'success' })
+
+  const blogFormRef = useRef()
 
   useEffect(() => {
     blogService.getAll().then((initialBlogs) => {
@@ -64,22 +62,41 @@ const App = () => {
     setUser(null)
   }
 
-  const handleCreateBlog = async (event) => {
-    event.preventDefault()
+  const handleCreateBlog = async (blogObject) => {
     try {
-      const newBlog = await blogService.create({
-        title,
-        author,
-        url,
-      })
-
+      blogFormRef.current.toggleVisibility()
+      const newBlog = await blogService.create(blogObject)
       setBlogs(blogs.concat(newBlog))
       notify(`a new blog ${newBlog.title} by ${newBlog.author} added`, 'success')
-      setTitle('')
-      setAuthor('')
-      setUrl('')
     } catch (exception) {
       notify(exception.response?.data?.error || 'failed to create blog', 'error')
+    }
+  }
+
+  const handleLikeBlog = async (blogToLike) => {
+    try {
+      const updatedBlogObject = {
+        user: blogToLike.user?.id || blogToLike.user?._id || blogToLike.user,
+        likes: blogToLike.likes + 1,
+        author: blogToLike.author,
+        title: blogToLike.title,
+        url: blogToLike.url,
+      }
+
+      const returnedBlog = await blogService.update(blogToLike.id, updatedBlogObject)
+      setBlogs(blogs.map((b) => (b.id === blogToLike.id ? returnedBlog : b)))
+    } catch (exception) {
+      notify(exception.response?.data?.error || 'failed to update likes', 'error')
+    }
+  }
+
+  const handleDeleteBlog = async (blogToDelete) => {
+    try {
+      await blogService.remove(blogToDelete.id)
+      setBlogs(blogs.filter((b) => b.id !== blogToDelete.id))
+      notify(`blog ${blogToDelete.title} by ${blogToDelete.author} removed`, 'success')
+    } catch (exception) {
+      notify(exception.response?.data?.error || 'failed to delete blog', 'error')
     }
   }
 
@@ -99,6 +116,8 @@ const App = () => {
     )
   }
 
+  const sortedBlogs = [...blogs].sort((a, b) => b.likes - a.likes)
+
   return (
     <div>
       <h2>blogs</h2>
@@ -107,20 +126,19 @@ const App = () => {
         {user.name} logged in <button onClick={handleLogout}>logout</button>
       </p>
 
-      <h2>create new</h2>
-      <BlogForm
-        title={title}
-        author={author}
-        url={url}
-        handleTitleChange={({ target }) => setTitle(target.value)}
-        handleAuthorChange={({ target }) => setAuthor(target.value)}
-        handleUrlChange={({ target }) => setUrl(target.value)}
-        handleSubmit={handleCreateBlog}
-      />
+      <Togglable buttonLabel="new blog" ref={blogFormRef}>
+        <BlogForm createBlog={handleCreateBlog} />
+      </Togglable>
       <br />
 
-      {blogs.map((blog) => (
-        <Blog key={blog.id} blog={blog} />
+      {sortedBlogs.map((blog) => (
+        <Blog
+          key={blog.id}
+          blog={blog}
+          onLike={handleLikeBlog}
+          onDelete={handleDeleteBlog}
+          currentUser={user}
+        />
       ))}
     </div>
   )
