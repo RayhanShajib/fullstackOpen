@@ -1,16 +1,12 @@
+// Load environment variables first (before any module that reads process.env)
+require('dotenv').config()
+
 const express = require('express')
 const morgan = require('morgan')
 const cors = require('cors')
+const Person = require('./models/person')
 
 const app = express()
-
-// ── Initial data ──────────────────────────────────────────────────────────────
-let persons = [
-  { id: '1', name: 'Arto Hellas',       number: '040-123456'    },
-  { id: '2', name: 'Ada Lovelace',      number: '39-44-5323523' },
-  { id: '3', name: 'Dan Abramov',       number: '12-43-234345'  },
-  { id: '4', name: 'Mary Poppendieck', number: '39-23-6423122' },
-]
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
@@ -20,7 +16,9 @@ app.use(cors())
 // 3.11: Serve frontend production build as static files
 app.use(express.static('dist'))
 
-// 3.8*: Custom morgan token that logs request body for POST requests
+app.use(express.json())
+
+// 3.8*: Custom morgan token — logs request body for POST requests
 morgan.token('body', (req) => {
   if (req.method === 'POST') {
     return JSON.stringify(req.body)
@@ -28,54 +26,59 @@ morgan.token('body', (req) => {
   return ''
 })
 
-app.use(express.json())
-
-// 3.7: morgan 'tiny' format + body token for POST requests
+// 3.7: morgan format + body token for POST requests
 app.use(
   morgan(':method :url :status :res[content-length] - :response-time ms :body')
 )
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// 3.1: GET all persons
+// 3.13: GET all persons — fetched from MongoDB
 app.get('/api/persons', (request, response) => {
-  response.json(persons)
+  Person.find({}).then(persons => {
+    response.json(persons)
+  })
 })
 
-// 3.2: Info page
-app.get('/info', (request, response) => {
-  const count = persons.length
-  const time = new Date()
-  response.send(`
-    <p>Phonebook has info for ${count} people</p>
-    <p>${time}</p>
-  `)
+// 3.18: Info page — count fetched live from DB
+app.get('/info', (request, response, next) => {
+  Person.countDocuments({})
+    .then(count => {
+      const time = new Date()
+      response.send(`
+        <p>Phonebook has info for ${count} people</p>
+        <p>${time}</p>
+      `)
+    })
+    .catch(error => next(error))
 })
 
-// 3.3: GET a single person by id
-app.get('/api/persons/:id', (request, response) => {
-  const id = request.params.id
-  const person = persons.find(p => p.id === id)
-
-  if (person) {
-    response.json(person)
-  } else {
-    response.status(404).json({ error: 'person not found' })
-  }
+// 3.18: GET a single person by id — from DB
+app.get('/api/persons/:id', (request, response, next) => {
+  Person.findById(request.params.id)
+    .then(person => {
+      if (person) {
+        response.json(person)
+      } else {
+        response.status(404).json({ error: 'person not found' })
+      }
+    })
+    .catch(error => next(error))
 })
 
-// 3.4: DELETE a person by id
-app.delete('/api/persons/:id', (request, response) => {
-  const id = request.params.id
-  persons = persons.filter(p => p.id !== id)
-  response.status(204).end()
+// 3.15: DELETE a person by id — from DB
+app.delete('/api/persons/:id', (request, response, next) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then(() => {
+      response.status(204).end()
+    })
+    .catch(error => next(error))
 })
 
-// 3.5 + 3.6: POST — add a new person
-app.post('/api/persons', (request, response) => {
+// 3.14: POST — save a new person to DB
+app.post('/api/persons', (request, response, next) => {
   const body = request.body
 
-  // 3.6: Validate — name and number must be present
   if (!body.name) {
     return response.status(400).json({ error: 'name is missing' })
   }
@@ -83,23 +86,33 @@ app.post('/api/persons', (request, response) => {
     return response.status(400).json({ error: 'number is missing' })
   }
 
-  // 3.6: Validate — name must be unique
-  const nameExists = persons.some(
-    p => p.name.toLowerCase() === body.name.toLowerCase()
-  )
-  if (nameExists) {
-    return response.status(409).json({ error: 'name must be unique' })
-  }
-
-  // 3.5: Generate a random id with a large enough range
-  const person = {
-    id: String(Math.floor(Math.random() * 1_000_000)),
+  const person = new Person({
     name: body.name,
     number: body.number,
-  }
+  })
 
-  persons = persons.concat(person)
-  response.json(person)
+  person.save()
+    .then(savedPerson => {
+      response.json(savedPerson)
+    })
+    .catch(error => next(error))
+})
+
+// 3.17*: PUT — update an existing person's number
+app.put('/api/persons/:id', (request, response, next) => {
+  const { number } = request.body
+
+  Person.findById(request.params.id)
+    .then(person => {
+      if (!person) {
+        return response.status(404).end()
+      }
+      person.number = number
+      return person.save().then(updatedPerson => {
+        response.json(updatedPerson)
+      })
+    })
+    .catch(error => next(error))
 })
 
 // ── Unknown endpoint handler ───────────────────────────────────────────────────
@@ -107,6 +120,19 @@ const unknownEndpoint = (request, response) => {
   response.status(404).send({ error: 'unknown endpoint' })
 }
 app.use(unknownEndpoint)
+
+// ── 3.16: Centralized error handler middleware ─────────────────────────────────
+// Must be the last middleware loaded
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  }
+
+  next(error)
+}
+app.use(errorHandler)
 
 // ── Start server ──────────────────────────────────────────────────────────────
 // 3.10: Use PORT env variable for cloud deployments (Render, Fly.io, etc.)
