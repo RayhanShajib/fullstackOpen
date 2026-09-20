@@ -2,11 +2,13 @@ const { test, before, after, beforeEach, describe } = require('node:test')
 const assert = require('node:assert')
 const mongoose = require('mongoose')
 const supertest = require('supertest')
+const bcrypt = require('bcrypt')
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const app = require('../app')
 const api = supertest(app)
 const helper = require('./test_helper')
 const Blog = require('../models/blog')
+const User = require('../models/user')
 
 let mongoServer
 
@@ -26,7 +28,17 @@ after(async () => {
 describe('when there is initially some blogs saved', () => {
   beforeEach(async () => {
     await Blog.deleteMany({})
-    await Blog.insertMany(helper.initialBlogs)
+    await User.deleteMany({})
+
+    const passwordHash = await bcrypt.hash('sekret', 10)
+    const user = new User({ username: 'root', name: 'Superuser', passwordHash })
+    const savedUser = await user.save()
+
+    const blogsWithUser = helper.initialBlogs.map((b) => ({
+      ...b,
+      user: savedUser._id,
+    }))
+    await Blog.insertMany(blogsWithUser)
   })
 
   test('blogs are returned as json', async () => {
