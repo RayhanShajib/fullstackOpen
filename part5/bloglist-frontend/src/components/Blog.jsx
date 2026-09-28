@@ -32,27 +32,22 @@ const Blog = ({ blog, onLike, onDelete, currentUser }) => {
 
   return (
     <div style={blogStyle} className="blog">
-      {!visible ? (
-        <div>
-          {blog.title} {blog.author} <button onClick={toggleVisibility}>view</button>
+      <div className="blog-title-author">
+        {blog.title} {blog.author}
+        <button onClick={toggleVisibility}>{visible ? 'hide' : 'view'}</button>
+      </div>
+      <div className="blog-details" style={{ display: visible ? '' : 'none' }}>
+        <div className="blog-url">{blog.url}</div>
+        <div className="blog-likes">
+          likes {blog.likes} <button onClick={handleLike}>like</button>
         </div>
-      ) : (
-        <div>
-          <div>
-            {blog.title} {blog.author} <button onClick={toggleVisibility}>hide</button>
-          </div>
-          <div>{blog.url}</div>
-          <div>
-            likes {blog.likes} <button onClick={handleLike}>like</button>
-          </div>
-          <div>{blog.user?.name || blog.user?.username}</div>
-          {isCreator && (
-            <button onClick={handleRemove} style={{ backgroundColor: '#008CBA', color: 'white' }}>
-              remove
-            </button>
-          )}
-        </div>
-      )}
+        <div>{blog.user?.name || blog.user?.username}</div>
+        {isCreator && (
+          <button onClick={handleRemove} style={{ backgroundColor: '#008CBA', color: 'white' }}>
+            remove
+          </button>
+        )}
+      </div>
     </div>
   )
 }
